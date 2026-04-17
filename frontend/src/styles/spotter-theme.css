@@ -1,0 +1,11 @@
+/* BOSS直聘顶栏同色：全局 Element Plus 主色，驱动主按钮、Tab 激活条与文字、开关、链接等 */
+:root {
+  --el-color-primary: #12ada9;
+  --el-color-primary-light-3: #59c6c3;
+  --el-color-primary-light-5: #89d6d4;
+  --el-color-primary-light-7: #b8e6e5;
+  --el-color-primary-light-8: #d0efee;
+  --el-color-primary-light-9: #e7f7f6;
+  --el-color-primary-dark-2: #0e8a87;
+  --el-color-primary-rgb: 18, 173, 169;
+}

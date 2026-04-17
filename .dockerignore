@@ -1,0 +1,10 @@
+.git
+.idea
+**/.venv
+**/node_modules
+**/__pycache__
+*.pyc
+*.pyo
+.DS_Store
+backend/logs
+*.log

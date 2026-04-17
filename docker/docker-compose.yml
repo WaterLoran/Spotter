@@ -1,0 +1,21 @@
+services:
+  spotter:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - ../data:/app/data
+    environment:
+      - HOST=0.0.0.0
+      - PORT=5000
+      - DATA_DIR=/app/data
+      - MAIN_DB_NAME=logs.db
+      - SQLEYE_DB_NAME=sqleye.db
+      - SCHEDULER_ENABLED=true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
