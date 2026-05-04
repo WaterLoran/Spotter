@@ -36,11 +36,8 @@
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item @click="openLogConfigTab">日志配置</el-dropdown-item>
-              <el-dropdown-item divided @click="openSqlSessionConfigDialog">Mysql配置</el-dropdown-item>
-              <el-dropdown-item @click="onSettingsPlaceholder('pgsql')">pgsql配置</el-dropdown-item>
-              <el-dropdown-item @click="onSettingsPlaceholder('oracle')">oracle配置</el-dropdown-item>
-              <el-dropdown-item @click="onSettingsPlaceholder('redis')">redis配置</el-dropdown-item>
-              <el-dropdown-item @click="onSettingsPlaceholder('kafka')">kafka配置</el-dropdown-item>
+              <el-dropdown-item divided @click="openSqlSessionConfigDialog('mysql')">Mysql配置</el-dropdown-item>
+              <el-dropdown-item @click="openSqlSessionConfigDialog('pgsql')">Pgsql配置</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -69,7 +66,7 @@
       destroy-on-close
       @closed="destroyTabSortable"
     >
-      <p class="tab-visibility-hint">拖动左侧手柄排序；勾选控制在主界面是否显示（仅下列四项）。</p>
+      <p class="tab-visibility-hint">拖动左侧手柄排序；勾选控制在主界面是否显示（仅下列五项）。</p>
       <div ref="sortableContainerRef" class="tab-visibility-sort-list">
         <div v-for="row in draftOrderRows" :key="row.key" class="tab-visibility-row">
           <span class="tab-visibility-drag-handle" title="拖动排序">
@@ -88,12 +85,12 @@
 
     <el-dialog
       v-model="sqlSessionConfigDialogVisible"
-      title="SQL连接配置"
-      width="600px"
+      :title="sqlSessionConfigDialogTitle"
+      width="640px"
       destroy-on-close
       align-center
     >
-      <SqlConnectionConfigPanel embedded />
+      <SqlConnectionConfigPanel v-if="sqlSessionConfigDialogVisible" embedded :db-type="sqlSessionConfigInitialDb" />
     </el-dialog>
   </div>
 </template>
@@ -109,20 +106,22 @@ import BackgroundTasksPanel from "./components/BackgroundTasksPanel.vue";
 import LogViewPane from "./components/LogViewPane.vue";
 import ShellQueryPanel from "./components/ShellQueryPanel.vue";
 import SqlConnectionConfigPanel from "./components/SqlConnectionConfigPanel.vue";
+import ApiQueryPanel from "./components/ApiQueryPanel.vue";
 import SqlFieldSearchPanel from "./components/SqlFieldSearchPanel.vue";
 import SqlQueryPanel from "./components/SqlQueryPanel.vue";
 
 const TAB_STORAGE_KEY = "spotter_tab_bar_prefs_v1";
 
-/** 仅这四项可在弹窗中配置显示与顺序；其余标签顺序固定见 DEFAULT_FULL_TAB_ORDER */
-const CONFIGURABLE_TAB_KEYS = ["logs", "sql-query", "shell-query", "field-search"];
-/** 与 {@link DEFAULT_FULL_TAB_ORDER} 中前四项可配置标签对应下标；最后一项为固定的「后台任务」 */
-const CONFIGURABLE_TAB_SLOTS = [0, 1, 2, 3];
+/** 仅这五项可在弹窗中配置显示与顺序；其余标签顺序固定见 DEFAULT_FULL_TAB_ORDER */
+const CONFIGURABLE_TAB_KEYS = ["logs", "sql-query", "shell-query", "api-query", "field-search"];
+/** 与 {@link DEFAULT_FULL_TAB_ORDER} 中前五项可配置标签对应下标；最后一项为固定的「后台任务」 */
+const CONFIGURABLE_TAB_SLOTS = [0, 1, 2, 3, 4];
 
 const CONFIGURABLE_LABELS = {
   logs: "日志列表",
   "sql-query": "SQL查询",
   "shell-query": "Shell查询",
+  "api-query": "API查询",
   "field-search": "字段搜索",
 };
 
@@ -130,6 +129,7 @@ const TAB_LABELS = {
   logs: "日志列表",
   "sql-query": "SQL查询",
   "shell-query": "Shell查询",
+  "api-query": "API查询",
   "field-search": "字段搜索",
   tasks: "后台任务",
 };
@@ -138,13 +138,14 @@ const TAB_COMPONENTS = {
   logs: LogViewPane,
   "sql-query": SqlQueryPanel,
   "shell-query": ShellQueryPanel,
+  "api-query": ApiQueryPanel,
   "field-search": SqlFieldSearchPanel,
   tasks: BackgroundTasksPanel,
 };
 
-const DEFAULT_FULL_TAB_ORDER = ["logs", "sql-query", "shell-query", "field-search", "tasks"];
+const DEFAULT_FULL_TAB_ORDER = ["logs", "sql-query", "shell-query", "api-query", "field-search", "tasks"];
 
-const DEFAULT_ORDER_FOUR = ["logs", "sql-query", "shell-query", "field-search"];
+const DEFAULT_ORDER_CONFIGURABLE = ["logs", "sql-query", "shell-query", "api-query", "field-search"];
 
 function loadTabBarPrefs() {
   try {
@@ -156,10 +157,10 @@ function loadTabBarPrefs() {
   }
 }
 
-function normalizeOrderFour(raw) {
+function normalizeOrderConfigurable(raw) {
   const allowed = new Set(CONFIGURABLE_TAB_KEYS);
   const list = Array.isArray(raw) ? raw.filter((k) => allowed.has(k)) : [];
-  const missing = DEFAULT_ORDER_FOUR.filter((k) => !list.includes(k));
+  const missing = DEFAULT_ORDER_CONFIGURABLE.filter((k) => !list.includes(k));
   return [...list, ...missing].slice(0, CONFIGURABLE_TAB_KEYS.length);
 }
 
@@ -168,6 +169,7 @@ function normalizeVisible(raw) {
     logs: true,
     "sql-query": true,
     "shell-query": true,
+    "api-query": true,
     "field-search": true,
   };
   if (raw && typeof raw === "object") {
@@ -179,13 +181,15 @@ function normalizeVisible(raw) {
 }
 
 const prefs = loadTabBarPrefs();
-const savedOrderFour = ref(normalizeOrderFour(prefs?.orderFour));
+const savedOrderConfigurable = ref(
+  normalizeOrderConfigurable(prefs?.orderConfigurable ?? prefs?.orderFour),
+);
 const savedVisible = ref(normalizeVisible(prefs?.visible));
 
-function mergeFullTabOrder(orderFour) {
+function mergeFullTabOrder(orderConfigurable) {
   const full = [...DEFAULT_FULL_TAB_ORDER];
   for (let i = 0; i < CONFIGURABLE_TAB_KEYS.length; i++) {
-    full[CONFIGURABLE_TAB_SLOTS[i]] = orderFour[i];
+    full[CONFIGURABLE_TAB_SLOTS[i]] = orderConfigurable[i];
   }
   return full;
 }
@@ -195,7 +199,7 @@ function isConfigurableTab(name) {
 }
 
 const displayTabNames = computed(() => {
-  const full = mergeFullTabOrder(savedOrderFour.value);
+  const full = mergeFullTabOrder(savedOrderConfigurable.value);
   const vis = savedVisible.value;
   return full.filter((name) => !isConfigurableTab(name) || vis[name] !== false);
 });
@@ -213,6 +217,11 @@ provide("pendingLogConfigTab", pendingLogConfigTab);
 provide("spotterActiveTab", activeTab);
 
 const sqlSessionConfigDialogVisible = ref(false);
+/** 打开 SQL 连接弹窗时锁定的库类型：mysql | pgsql */
+const sqlSessionConfigInitialDb = ref("mysql");
+const sqlSessionConfigDialogTitle = computed(() =>
+  sqlSessionConfigInitialDb.value === "pgsql" ? "Pgsql 连接配置" : "Mysql 连接配置"
+);
 const sortableContainerRef = ref(null);
 const draftOrderRows = ref([]);
 let sortableInstance = null;
@@ -236,14 +245,14 @@ function persistTabBarPrefs() {
   localStorage.setItem(
     TAB_STORAGE_KEY,
     JSON.stringify({
-      orderFour: savedOrderFour.value,
+      orderConfigurable: savedOrderConfigurable.value,
       visible: { ...savedVisible.value },
     }),
   );
 }
 
 function openTabVisibilityDialog() {
-  draftOrderRows.value = savedOrderFour.value.map((key) => ({
+  draftOrderRows.value = savedOrderConfigurable.value.map((key) => ({
     key,
     label: CONFIGURABLE_LABELS[key],
     visible: savedVisible.value[key] !== false,
@@ -252,7 +261,7 @@ function openTabVisibilityDialog() {
 }
 
 function applyTabVisibilitySettings() {
-  savedOrderFour.value = draftOrderRows.value.map((r) => r.key);
+  savedOrderConfigurable.value = draftOrderRows.value.map((r) => r.key);
   const nextVis = { ...savedVisible.value };
   for (const row of draftOrderRows.value) {
     nextVis[row.key] = row.visible;
@@ -317,12 +326,9 @@ function openLogConfigTab() {
   pendingLogConfigTab.value = true;
 }
 
-function openSqlSessionConfigDialog() {
+function openSqlSessionConfigDialog(kind = "mysql") {
+  sqlSessionConfigInitialDb.value = kind === "pgsql" ? "pgsql" : "mysql";
   sqlSessionConfigDialogVisible.value = true;
-}
-
-function onSettingsPlaceholder(_key) {
-  /* UI only for now */
 }
 
 async function deleteSystemAction() {

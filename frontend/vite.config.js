@@ -10,7 +10,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/api": {
-        // Default 5001: macOS often reserves 5000 for AirPlay Receiver
+        // start.sh 默认 PORT=5001；直接跑 python 且未设 PORT 时为 backend/config.py 的 5000，需设 VITE_API_PROXY=http://127.0.0.1:5000 npm run dev
         target: process.env.VITE_API_PROXY || "http://127.0.0.1:5001",
         changeOrigin: true,
         timeout: 120000,

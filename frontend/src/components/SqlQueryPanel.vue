@@ -77,6 +77,23 @@
               <span class="sql-poll-interval-unit">秒</span>
             </span>
             <el-button @click="save">保存任务</el-button>
+            <span class="sql-task-session">
+              <span class="sql-task-session-label">数据库配置</span>
+              <el-select
+                v-model="current.session_id"
+                class="sql-task-session-select"
+                placeholder="选择连接"
+                filterable
+                @change="onSessionChange"
+              >
+                <el-option
+                  v-for="s in sessionOptions"
+                  :key="s.id"
+                  :value="s.id"
+                  :label="sessionOptionLabel(s)"
+                />
+              </el-select>
+            </span>
             <el-button type="danger" @click="remove">删除任务</el-button>
           </div>
           <el-table :key="tableRenderKey" style="margin-top:12px;" :data="resultRows" border stripe>
@@ -104,15 +121,67 @@
 import { Menu as MenuIcon } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { listSqlSessions, normalizeSqlSessionsData } from "../api/sqlSessions";
 import { useQueryStore } from "../stores/queryStore";
 
 const store = useQueryStore();
+const sessionsForSelect = ref([]);
 const activeId = ref("");
 const tableRenderKey = ref(0);
 const historyTreeRef = ref(null);
 const editDialogVisible = ref(false);
 const editTaskName = ref("");
 const current = computed(() => store.currentQueries.find((q) => String(q.id) === activeId.value));
+
+const sessionOptions = computed(() => {
+  const list = sessionsForSelect.value || [];
+  const q = current.value;
+  if (!q?.session_id) return list;
+  if (!list.some((s) => s.id === q.session_id)) {
+    return [
+      ...list,
+      {
+        id: q.session_id,
+        name: `已绑定 #${q.session_id}`,
+        db_type: "mysql",
+        _orphan: true
+      }
+    ];
+  }
+  return list;
+});
+
+function sessionOptionLabel(s) {
+  const dt = (s.db_type || "").toLowerCase();
+  const t = dt === "pgsql" || dt === "postgres" ? "Pgsql" : dt === "mysql" ? "Mysql" : dt === "sqlite" ? "Sqlite" : dt || "DB";
+  return `${s.name}（${t}）`;
+}
+
+async function loadSessionsForSelect() {
+  try {
+    const res = await listSqlSessions();
+    sessionsForSelect.value = normalizeSqlSessionsData(res?.data);
+  } catch {
+    sessionsForSelect.value = [];
+  }
+}
+
+async function onSessionChange() {
+  if (!current.value) return;
+  try {
+    const res = await store.editQuery(current.value.id, { session_id: current.value.session_id });
+    if (res?.success === false) {
+      ElMessage.error(res.error || "保存失败");
+      return;
+    }
+    const key = String(current.value.id);
+    store.queryResults[key] = { history: [], currentHistoryId: null, data: [] };
+    await store.loadQueryHistory(key);
+    tableRenderKey.value += 1;
+  } catch (e) {
+    ElMessage.error(e?.message || "保存失败");
+  }
+}
 const resultRows = computed(() => (activeId.value ? store.queryResults[activeId.value]?.data || [] : []));
 const columns = computed(() => (resultRows.value[0] ? Object.keys(resultRows.value[0]) : []));
 
@@ -257,6 +326,7 @@ async function removeHistoryItem(historyId) {
 }
 
 onMounted(async () => {
+  await loadSessionsForSelect();
   await refreshList({ silent: true });
 });
 
@@ -318,10 +388,17 @@ async function confirmEditTask() {
 }
 
 async function add() {
+  await loadSessionsForSelect();
+  const firstSid = sessionsForSelect.value[0]?.id;
+  if (firstSid == null) {
+    ElMessage.warning("请先在右上角齿轮中配置至少一份数据库连接（Mysql 或 Pgsql）");
+    return;
+  }
   try {
     await store.addQuery({
       name: `查询任务 ${store.currentQueries.length + 1}`,
       sql: "SELECT 1",
+      session_id: firstSid,
       is_active: false,
       polling_interval: 60
     });
@@ -424,6 +501,20 @@ async function remove() {
   font-size: 13px;
   color: var(--el-text-color-secondary);
   flex-shrink: 0;
+}
+.sql-task-session {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 4px;
+}
+.sql-task-session-label {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+}
+.sql-task-session-select {
+  width: 220px;
 }
 .sql-query-layout {
   margin-top: 8px;

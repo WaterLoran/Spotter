@@ -22,11 +22,28 @@
     </el-tabs>
     <template v-if="current">
       <el-input v-model="current.expression" placeholder="表达式，例如 f_id = 1000204" style="margin-top:8px;" />
-      <div style="margin-top:8px;">
-        <el-switch v-model="includeValueMatch" />
-        <span style="margin-left:8px;">开启全库值匹配</span>
-      </div>
-      <div style="margin-top:8px;">
+      <div class="field-search-actions">
+        <div class="field-search-value-match">
+          <el-switch v-model="includeValueMatch" />
+          <span class="field-search-value-match-label">开启全库值匹配</span>
+        </div>
+        <span class="sql-task-session">
+          <span class="sql-task-session-label">数据库配置</span>
+          <el-select
+            v-model="current.session_id"
+            class="sql-task-session-select"
+            placeholder="选择连接"
+            filterable
+            @change="onSessionChange"
+          >
+            <el-option
+              v-for="s in sessionOptions"
+              :key="s.id"
+              :value="s.id"
+              :label="sessionOptionLabel(s)"
+            />
+          </el-select>
+        </span>
         <el-button :loading="searching" @click="run">执行搜索</el-button>
       </div>
       <div v-if="orderedTableResults.length" class="search-result-wrap">
@@ -103,9 +120,10 @@ import {
   listFieldSearchTasks,
   updateFieldSearchTask
 } from "../api/sqlFieldSearch";
-import { loadSqlSession } from "../api/sqlSessions";
+import { listSqlSessions, normalizeSqlSessionsData } from "../api/sqlSessions";
 
 const tasks = ref([]);
+const sessionsForSelect = ref([]);
 const activeId = ref("");
 const includeValueMatch = ref(false);
 const resultIncludeValueMatch = ref(false);
@@ -113,7 +131,47 @@ const searchResult = ref(null);
 const expandedTables = ref([]);
 const searching = ref(false);
 const current = computed(() => tasks.value.find((t) => String(t.id) === activeId.value));
-const sessionId = ref(null);
+const sessionOptions = computed(() => {
+  const list = sessionsForSelect.value || [];
+  const t = current.value;
+  if (!t?.session_id) return list;
+  if (!list.some((s) => s.id === t.session_id)) {
+    return [
+      ...list,
+      { id: t.session_id, name: `已绑定 #${t.session_id}`, db_type: "mysql", _orphan: true }
+    ];
+  }
+  return list;
+});
+
+function sessionOptionLabel(s) {
+  const dt = (s.db_type || "").toLowerCase();
+  const t = dt === "pgsql" || dt === "postgres" ? "Pgsql" : dt === "mysql" ? "Mysql" : dt === "sqlite" ? "Sqlite" : dt || "DB";
+  return `${s.name}（${t}）`;
+}
+
+async function loadSessionsForSelect() {
+  try {
+    const res = await listSqlSessions();
+    sessionsForSelect.value = normalizeSqlSessionsData(res?.data);
+  } catch {
+    sessionsForSelect.value = [];
+  }
+}
+
+async function onSessionChange() {
+  if (!current.value) return;
+  try {
+    await updateFieldSearchTask(current.value.id, {
+      ...current.value,
+      session_id: current.value.session_id,
+      expression: current.value.expression || ""
+    });
+    ElMessage.success("已切换数据库配置");
+  } catch (e) {
+    ElMessage.error(e?.message || "保存失败");
+  }
+}
 const editDialogVisible = ref(false);
 const editName = ref("");
 const editExpression = ref("");
@@ -170,14 +228,23 @@ const orderedTableResults = computed(() => {
 const hitTableCount = computed(() => orderedTableResults.value.filter((i) => i.hasHit).length);
 
 async function load() {
-  const s = await loadSqlSession();
-  sessionId.value = s.data?.id || null;
+  await loadSessionsForSelect();
   const res = await listFieldSearchTasks();
   tasks.value = res.data || [];
   if (tasks.value.length && !activeId.value) activeId.value = String(tasks.value[0].id);
 }
 async function createTaskAction() {
-  await createFieldSearchTask({ name: `字段搜索 ${tasks.value.length + 1}`, expression: "id = 1" });
+  await loadSessionsForSelect();
+  const firstSid = sessionsForSelect.value[0]?.id;
+  if (firstSid == null) {
+    ElMessage.warning("请先在右上角齿轮中配置至少一份数据库连接（Mysql 或 Pgsql）");
+    return;
+  }
+  await createFieldSearchTask({
+    name: `字段搜索 ${tasks.value.length + 1}`,
+    expression: "id = 1",
+    session_id: firstSid
+  });
   await load();
 }
 async function remove() {
@@ -198,12 +265,12 @@ async function removeByTabName(name) {
   await load();
 }
 async function run() {
-  if (!current.value || !sessionId.value) return;
+  if (!current.value || current.value.session_id == null) return;
   await updateFieldSearchTask(current.value.id, { ...current.value, expression: current.value.expression || "" });
   searching.value = true;
   resultIncludeValueMatch.value = includeValueMatch.value;
   try {
-    const res = await executeFieldSearch(sessionId.value, {
+    const res = await executeFieldSearch(current.value.session_id, {
       expression: current.value.expression,
       include_value_match: includeValueMatch.value
     });
@@ -338,6 +405,38 @@ onMounted(load);
 }
 .table-name {
   font-weight: 500;
+}
+.field-search-actions {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  row-gap: 8px;
+}
+.field-search-value-match {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.field-search-value-match-label {
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+  white-space: nowrap;
+}
+.sql-task-session {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.sql-task-session-label {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+}
+.sql-task-session-select {
+  width: 220px;
 }
 </style>
 

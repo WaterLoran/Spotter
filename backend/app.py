@@ -3,8 +3,11 @@ import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+_BACKEND_DIR = Path(__file__).resolve().parent
+
 from flask import Flask, g, jsonify, request, send_from_directory
 from flask_cors import CORS
+from werkzeug.routing import BaseConverter
 
 from config import APP_LOG_PATH, DEBUG, HOST, PORT, SCHEDULER_ENABLED, SCHEDULER_SEARCH_CONFIG_INTERVAL_SECONDS
 from fastlog import database
@@ -28,6 +31,14 @@ except Exception:  # pragma: no cover
     sql_queries_bp = None
     sql_sessions_bp = None
 
+class _SpaPathConverter(BaseConverter):
+    """SPA 兜底不匹配 /api 下的路径，避免 POST /api/... 落到仅 GET 的 spa 视图而出现 405。"""
+
+    regex = r"(?!api(?:/|$)).+"
+
+    def to_python(self, value):
+        return value
+
 
 def ok(data=None, message=""):
     return jsonify({"success": True, "message": message, "data": data})
@@ -38,7 +49,14 @@ def err(message, code=400):
 
 
 def create_app():
-    app = Flask(__name__, static_folder="static", static_url_path="/")
+    # 内置静态仅服务 /assets/*（对应 Vite dist 下的 assets/），避免 static_url_path="/" 时
+    # Flask 注册 GET-only 的 /<path:filename> 吞掉 /api/... 导致 POST 返回 405。
+    app = Flask(
+        __name__,
+        static_folder=str(_BACKEND_DIR / "static" / "assets"),
+        static_url_path="/assets",
+    )
+    app.url_map.converters["spa_path"] = _SpaPathConverter
     CORS(app)
     database.init_db()
     setup_logging(app)
@@ -57,6 +75,31 @@ def create_app():
         app.register_blueprint(sql_queries_bp, url_prefix="/api/sql")
     if field_search_bp:
         app.register_blueprint(field_search_bp, url_prefix="/api/sql")
+
+    header_snippets_bp = None
+    api_tasks_bp = None
+    try:
+        from apieye.routes_headers import header_snippets_bp as _header_snippets_bp
+
+        header_snippets_bp = _header_snippets_bp
+    except Exception:  # pragma: no cover
+        app.logger.exception("apieye routes_headers 未加载（API 查询 Header 接口不可用）")
+    try:
+        from apieye.routes_tasks import api_tasks_bp as _api_tasks_bp
+
+        api_tasks_bp = _api_tasks_bp
+    except Exception:  # pragma: no cover
+        app.logger.exception("apieye routes_tasks 未加载（API 查询任务接口不可用）")
+
+    if header_snippets_bp:
+        app.register_blueprint(header_snippets_bp, url_prefix="/api/api-query")
+    if api_tasks_bp:
+        app.register_blueprint(api_tasks_bp, url_prefix="/api/api-query")
+
+    app.extensions["spotter_apieye"] = {
+        "headers_loaded": bool(header_snippets_bp),
+        "tasks_loaded": bool(api_tasks_bp),
+    }
 
     register_routes(app)
     start_background_services(app)
@@ -116,7 +159,16 @@ def start_background_services(app):
 def register_routes(app):
     @app.get("/api/health")
     def health():
-        return ok({"status": "ok"})
+        apieye = app.extensions.get("spotter_apieye") or {}
+        return ok(
+            {
+                "status": "ok",
+                "api_query": {
+                    "headers": bool(apieye.get("headers_loaded")),
+                    "tasks": bool(apieye.get("tasks_loaded")),
+                },
+            }
+        )
 
     @app.get("/api/config")
     def get_config():
@@ -529,15 +581,17 @@ def register_routes(app):
             }
         )
 
-    @app.route("/", defaults={"path": ""})
-    @app.route("/<path:path>")
-    def spa(path):
-        static_folder = Path(app.static_folder or "")
-        if path and (static_folder / path).exists():
-            return send_from_directory(static_folder, path)
-        index_file = static_folder / "index.html"
+    # 仅 GET；路径用 spa_path 转换器排除 /api/*，避免与 REST 冲突（见 _SpaPathConverter）
+    @app.get("/", defaults={"spa_path": ""})
+    @app.get("/<spa_path:spa_path>")
+    def spa(spa_path):
+        path = spa_path or ""
+        dist_root = _BACKEND_DIR / "static"
+        if path and (dist_root / path).exists():
+            return send_from_directory(dist_root, path)
+        index_file = dist_root / "index.html"
         if index_file.exists():
-            return send_from_directory(static_folder, "index.html")
+            return send_from_directory(dist_root, "index.html")
         return ok({"message": "Spotter backend is running"})
 
 

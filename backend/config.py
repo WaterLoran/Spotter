@@ -18,6 +18,9 @@ MAIN_DB_PATH = DATA_DIR / MAIN_DB_NAME
 SQLEYE_DB_NAME = os.getenv("SQLEYE_DB_NAME", "sqleye.db")
 SQLEYE_DB_PATH = Path(os.getenv("SQLEYE_DB_PATH", str(BASE_DIR / SQLEYE_DB_NAME)))
 
+APIEYE_DB_NAME = os.getenv("APIEYE_DB_NAME", "apieye.db")
+APIEYE_DB_PATH = Path(os.getenv("APIEYE_DB_PATH", str(BASE_DIR / APIEYE_DB_NAME)))
+
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 APP_LOG_PATH = LOG_DIR / "app.log"

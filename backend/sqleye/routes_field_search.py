@@ -11,7 +11,7 @@ from flask import Blueprint, g, jsonify, request
 from sqleye.db import SessionLocal
 from sqleye.models import FieldSearchTask, Session
 from sqleye.services.db_connector import connect_db
-from sqleye.workspace import get_workspace_session
+from sqleye.workspace import first_session_for_system, get_session_by_id
 
 
 field_search_bp = Blueprint("sql_field_search", __name__)
@@ -224,15 +224,27 @@ def _run_field_search(session_obj, expression: str, include_value_match: bool):
         conn.close()
 
 
+def _field_search_task_for_system(db, task_id):
+    return (
+        db.query(FieldSearchTask)
+        .join(Session, FieldSearchTask.session_id == Session.id)
+        .filter(FieldSearchTask.id == int(task_id), Session.system_id == int(g.system_id))
+        .first()
+    )
+
+
 @field_search_bp.get("/field-search/tasks")
 def list_tasks():
     db = SessionLocal()
     try:
-        sess = get_workspace_session(db, g.system_id)
-        if not sess:
-            return ok([])
-        rows = db.query(FieldSearchTask).filter(FieldSearchTask.session_id == sess.id).all()
-        return ok([{"id": r.id, "name": r.name, "expression": r.expression} for r in rows])
+        rows = (
+            db.query(FieldSearchTask)
+            .join(Session, FieldSearchTask.session_id == Session.id)
+            .filter(Session.system_id == int(g.system_id))
+            .order_by(FieldSearchTask.id.asc())
+            .all()
+        )
+        return ok([{"id": r.id, "name": r.name, "expression": r.expression, "session_id": r.session_id} for r in rows])
     finally:
         db.close()
 
@@ -242,7 +254,15 @@ def create_task():
     payload = request.get_json(silent=True) or {}
     db = SessionLocal()
     try:
-        sess = get_workspace_session(db, g.system_id)
+        sess = None
+        if payload.get("session_id") is not None:
+            sess = get_session_by_id(db, g.system_id, payload.get("session_id"))
+        if not sess:
+            sess = first_session_for_system(db, g.system_id)
+        if not sess:
+            return jsonify(
+                {"success": False, "error": "请先在齿轮菜单中配置至少一份数据库连接", "message": "", "data": None}
+            ), 400
         row = FieldSearchTask(
             session_id=sess.id,
             name=payload.get("name", "字段搜索"),
@@ -250,7 +270,7 @@ def create_task():
         )
         db.add(row)
         db.commit()
-        return ok({"id": row.id})
+        return ok({"id": row.id, "session_id": row.session_id})
     finally:
         db.close()
 
@@ -259,8 +279,10 @@ def create_task():
 def get_task(task_id):
     db = SessionLocal()
     try:
-        row = db.query(FieldSearchTask).get(task_id)
-        return ok({"id": row.id, "name": row.name, "expression": row.expression} if row else None)
+        row = _field_search_task_for_system(db, task_id)
+        if not row:
+            return ok(None)
+        return ok({"id": row.id, "name": row.name, "expression": row.expression, "session_id": row.session_id})
     finally:
         db.close()
 
@@ -270,11 +292,20 @@ def update_task(task_id):
     payload = request.get_json(silent=True) or {}
     db = SessionLocal()
     try:
-        row = db.query(FieldSearchTask).get(task_id)
+        row = _field_search_task_for_system(db, task_id)
+        if not row:
+            return jsonify({"success": False, "error": "任务不存在", "message": "", "data": None}), 404
+        if "session_id" in payload and payload["session_id"] is not None:
+            new_sess = get_session_by_id(db, g.system_id, payload.get("session_id"))
+            if not new_sess:
+                return jsonify(
+                    {"success": False, "error": "所选数据库配置不存在或不属于当前系统", "message": "", "data": None}
+                ), 400
+            row.session_id = new_sess.id
         row.name = payload.get("name", row.name)
         row.expression = payload.get("expression", row.expression)
         db.commit()
-        return ok({"id": row.id})
+        return ok({"id": row.id, "session_id": row.session_id})
     finally:
         db.close()
 
@@ -283,7 +314,9 @@ def update_task(task_id):
 def delete_task(task_id):
     db = SessionLocal()
     try:
-        row = db.query(FieldSearchTask).get(task_id)
+        row = _field_search_task_for_system(db, task_id)
+        if not row:
+            return jsonify({"success": False, "error": "任务不存在", "message": "", "data": None}), 404
         db.delete(row)
         db.commit()
         return ok()

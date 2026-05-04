@@ -217,6 +217,7 @@ docker stop spotter && docker rm spotter
 | `DATA_DIR` | 主数据目录（默认项目下 `data/`） |
 | `MAIN_DB_NAME` / `SQLEYE_DB_NAME` | 主库与 SqlEye 库文件名 |
 | `SQLEYE_DB_PATH` | SqlEye 库绝对路径（可覆盖默认） |
+| `APIEYE_DB_NAME` / `APIEYE_DB_PATH` | API 查询（Header 与子任务历史）独立 SQLite 库；默认 `backend/apieye.db`，生产可设为 `/data/apieye.db` |
 | `SCHEDULER_ENABLED` | 是否自动启动后台采集调度（本地调试可设为 `false`） |
 | `SCHEDULER_INTERVAL_SECONDS` / `SCHEDULER_SEARCH_CONFIG_INTERVAL_SECONDS` | 主轮询与多搜索配置轮询间隔（秒） |
 | `DEBUG` | `true` 时 Flask 调试模式（仅开发） |

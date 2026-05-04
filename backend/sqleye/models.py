@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 
 from sqleye.db import Base
@@ -6,8 +6,12 @@ from sqleye.db import Base
 
 class Session(Base):
     __tablename__ = "sessions"
+    __table_args__ = (
+        UniqueConstraint("system_id", "db_type", "name", name="uq_sessions_system_db_type_name"),
+        Index("ix_sessions_system_id", "system_id"),
+    )
     id = Column(Integer, primary_key=True)
-    system_id = Column(Integer, nullable=False, unique=True, default=1)
+    system_id = Column(Integer, nullable=False, default=1)
     name = Column(String(100), nullable=False)
     db_type = Column(String(20), nullable=False)
     host = Column(String(255), nullable=False)

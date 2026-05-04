@@ -39,6 +39,13 @@ export const useQueryStore = defineStore("queryStore", {
       }
       return res;
     },
+    async patchQuerySession(id, sessionId) {
+      const res = await updateSqlQuery(id, { session_id: sessionId });
+      if (res?.success === false) return res;
+      const q = this.currentQueries.find((x) => Number(x.id) === Number(id));
+      if (q) q.session_id = sessionId;
+      return res;
+    },
     async removeQuery(id) {
       await deleteSqlQuery(id);
       await this.loadQueries();

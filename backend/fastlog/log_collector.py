@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import errno
 import logging
+import socket
 import re
 import threading
 import time
@@ -21,6 +23,31 @@ from fastlog.init_progress import progress_manager
 from fastlog.ssh_client import SSHClient, SSHConfig
 
 logger = logging.getLogger(__name__)
+
+_TRANSIENT_SSH_ERRNOS = {
+    errno.ECONNREFUSED,
+    errno.ECONNRESET,
+    errno.ETIMEDOUT,
+    errno.ENETUNREACH,
+    errno.EHOSTUNREACH,
+    errno.EPIPE,
+    64,
+}
+_ehd = getattr(errno, "EHOSTDOWN", None)
+if _ehd is not None:
+    _TRANSIENT_SSH_ERRNOS.add(_ehd)
+
+
+def _transient_ssh_network_failure(exc: BaseException) -> bool:
+    """SSH 偶发不可达（关机、断网、路由不可达等），不应按 ERROR+traceback 刷屏。"""
+    if isinstance(exc, socket.timeout):
+        return True
+    if isinstance(exc, (TimeoutError, BrokenPipeError, ConnectionResetError)):
+        return True
+    if isinstance(exc, OSError):
+        no = exc.errno
+        return no is not None and no in _TRANSIENT_SSH_ERRNOS
+    return False
 
 
 def _shell_single_quote(s: str) -> str:
@@ -598,6 +625,7 @@ class LogCollectorDaemon:
         self.last_inserted_total: int = 0
         self.last_error: Optional[str] = None
         self.last_error_at: Optional[float] = None
+        self._last_transient_warn_at: float = 0.0
 
     def start(self) -> None:
         self._stop.clear()
@@ -626,6 +654,7 @@ class LogCollectorDaemon:
                 self.last_tick_at = time.time()
                 self.last_error = None
                 self.last_error_at = None
+                self._last_transient_warn_at = 0.0
                 tick_ms = (time.perf_counter() - tick_t0) * 1000
                 logger.info(
                     "LogCollectorDaemon: tick_ok system_id=%s inserted=%s tick_elapsed_ms=%.0f",
@@ -637,10 +666,22 @@ class LogCollectorDaemon:
                 self.last_error = f"{type(ex).__name__}: {ex}"
                 self.last_error_at = time.time()
                 tick_ms = (time.perf_counter() - tick_t0) * 1000
-                logger.exception(
-                    "LogCollectorDaemon: tick_failed system_id=%s after_ms=%.0f err=%s",
-                    self.system_id,
-                    tick_ms,
-                    self.last_error,
-                )
+                if _transient_ssh_network_failure(ex):
+                    now = time.time()
+                    if now - self._last_transient_warn_at >= 60.0:
+                        self._last_transient_warn_at = now
+                        logger.warning(
+                            "LogCollectorDaemon: SSH unreachable system_id=%s target=%s err=%s "
+                            "(主机离线或网络不可达时每 60s 最多一条；恢复后会自动继续采集)",
+                            self.system_id,
+                            _ssh_target_for_log(self.system_id),
+                            self.last_error,
+                        )
+                else:
+                    logger.exception(
+                        "LogCollectorDaemon: tick_failed system_id=%s after_ms=%.0f err=%s",
+                        self.system_id,
+                        tick_ms,
+                        self.last_error,
+                    )
             self._stop.wait(self.interval_seconds)
