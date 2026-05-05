@@ -38,6 +38,7 @@
               <el-dropdown-item @click="openLogConfigTab">日志配置</el-dropdown-item>
               <el-dropdown-item divided @click="openSqlSessionConfigDialog('mysql')">Mysql配置</el-dropdown-item>
               <el-dropdown-item @click="openSqlSessionConfigDialog('pgsql')">Pgsql配置</el-dropdown-item>
+              <el-dropdown-item @click="openSqlSessionConfigDialog('oracle')">Oracle配置</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -217,10 +218,14 @@ provide("pendingLogConfigTab", pendingLogConfigTab);
 provide("spotterActiveTab", activeTab);
 
 const sqlSessionConfigDialogVisible = ref(false);
-/** 打开 SQL 连接弹窗时锁定的库类型：mysql | pgsql */
+/** 打开 SQL 连接弹窗时锁定的库类型：mysql | pgsql | oracle */
 const sqlSessionConfigInitialDb = ref("mysql");
 const sqlSessionConfigDialogTitle = computed(() =>
-  sqlSessionConfigInitialDb.value === "pgsql" ? "Pgsql 连接配置" : "Mysql 连接配置"
+  sqlSessionConfigInitialDb.value === "pgsql"
+    ? "Pgsql 连接配置"
+    : sqlSessionConfigInitialDb.value === "oracle"
+      ? "Oracle 连接配置"
+      : "Mysql 连接配置"
 );
 const sortableContainerRef = ref(null);
 const draftOrderRows = ref([]);
@@ -327,7 +332,7 @@ function openLogConfigTab() {
 }
 
 function openSqlSessionConfigDialog(kind = "mysql") {
-  sqlSessionConfigInitialDb.value = kind === "pgsql" ? "pgsql" : "mysql";
+  sqlSessionConfigInitialDb.value = kind === "pgsql" ? "pgsql" : kind === "oracle" ? "oracle" : "mysql";
   sqlSessionConfigDialogVisible.value = true;
 }
 

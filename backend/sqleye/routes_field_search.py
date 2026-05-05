@@ -50,11 +50,15 @@ def _parse_expression(expression: str):
 
 
 def _placeholder(db_type: str):
-    return "?" if db_type == "sqlite" else "%s"
+    if db_type == "sqlite":
+        return "?"
+    if db_type == "oracle":
+        return ":1"
+    return "%s"
 
 
 def _quote_ident(db_type: str, ident: str):
-    if db_type in ("pgsql", "postgres", "postgresql", "sqlite"):
+    if db_type in ("pgsql", "postgres", "postgresql", "sqlite", "oracle"):
         return f'"{ident}"'
     return f"`{ident}`"
 
@@ -152,6 +156,21 @@ def _list_columns(cur, db_type: str):
                 col_name = c["name"] if isinstance(c, dict) else c[1]
                 result.append({"table_name": tname, "column_name": col_name})
         return result
+    if db_type == "oracle":
+        cur.execute(
+            """
+            SELECT table_name, column_name
+            FROM user_tab_columns
+            ORDER BY table_name, column_id
+            """
+        )
+        rows = cur.fetchall() or []
+        out = []
+        for r in rows:
+            item = _normalize_col_row(r)
+            if item:
+                out.append(item)
+        return out
     return []
 
 
@@ -167,6 +186,9 @@ def _run_field_search(session_obj, expression: str, include_value_match: bool):
         value_matches = []
         ph = _placeholder(db_type)
         max_rows_each = 20
+        row_limit_sql = (
+            f"FETCH FIRST {max_rows_each} ROWS ONLY" if db_type == "oracle" else f"LIMIT {max_rows_each}"
+        )
 
         # Exact match: column name must be exactly the left side field.
         field_lc = field.lower()
@@ -176,7 +198,7 @@ def _run_field_search(session_obj, expression: str, include_value_match: bool):
             cname = c["column_name"]
             sql = (
                 f"SELECT * FROM {_quote_ident(db_type, tname)} "
-                f"WHERE {_quote_ident(db_type, cname)} = {ph} LIMIT {max_rows_each}"
+                f"WHERE {_quote_ident(db_type, cname)} = {ph} {row_limit_sql}"
             )
             cur.execute(sql, (value,))
             rows = _normalize_rows(cur, cur.fetchall())

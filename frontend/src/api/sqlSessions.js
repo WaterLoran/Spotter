@@ -8,7 +8,7 @@ export function normalizeSqlSessionsData(data) {
   return [];
 }
 
-/** @param {"mysql"|"pgsql"|""} [dbType] */
+/** @param {"mysql"|"pgsql"|"oracle"|""} [dbType] */
 export const listSqlSessions = (dbType) =>
   api.get("/sql/sessions", { params: dbType ? { db_type: dbType } : {} });
 

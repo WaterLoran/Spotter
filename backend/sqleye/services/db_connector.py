@@ -1,5 +1,6 @@
 import sqlite3
 
+import oracledb
 import psycopg2
 import pymysql
 
@@ -8,7 +9,11 @@ def _coerce_port(db_type: str, port) -> int:
     if db_type == "sqlite":
         return 0
     if port is None or port == "":
-        return 5432 if db_type == "pgsql" else 3306
+        if db_type == "pgsql":
+            return 5432
+        if db_type == "oracle":
+            return 1521
+        return 3306
     try:
         return int(port)
     except (TypeError, ValueError) as e:
@@ -53,4 +58,13 @@ def connect_db(session_obj):
             connect_timeout=10,
         )
 
-    raise ValueError(f"不支持的数据库类型: {db_type!r}，请使用 mysql、pgsql 或 sqlite")
+    if db_type == "oracle":
+        dsn = oracledb.makedsn(host, port, service_name=database) if database else f"{host}:{port}"
+        return oracledb.connect(
+            user=user,
+            password=password,
+            dsn=dsn,
+            tcp_connect_timeout=10,
+        )
+
+    raise ValueError(f"不支持的数据库类型: {db_type!r}，请使用 mysql、pgsql、oracle 或 sqlite")

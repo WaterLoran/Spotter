@@ -51,7 +51,7 @@ def _normalize_db_type(raw) -> Optional[str]:
     if raw is None or raw == "":
         return None
     s = str(raw).strip().lower()
-    if s in ("mysql", "pgsql", "postgres", "postgresql"):
+    if s in ("mysql", "pgsql", "postgres", "postgresql", "oracle"):
         if s in ("postgres", "postgresql"):
             return "pgsql"
         return s
@@ -88,8 +88,8 @@ def list_sessions():
 def create_session():
     payload = request.get_json(silent=True) or {}
     db_type = _normalize_db_type(payload.get("db_type"))
-    if db_type not in ("mysql", "pgsql"):
-        return err("db_type 必须为 mysql 或 pgsql", 400)
+    if db_type not in ("mysql", "pgsql", "oracle"):
+        return err("db_type 必须为 mysql、pgsql 或 oracle", 400)
     name = (payload.get("name") or "").strip()
     if not name:
         return err("名称不能为空", 400)
@@ -105,7 +105,14 @@ def create_session():
         password = ""
     port = payload.get("port")
     try:
-        port = int(port) if port is not None and port != "" else (5432 if db_type == "pgsql" else 3306)
+        if port is not None and port != "":
+            port = int(port)
+        elif db_type == "pgsql":
+            port = 5432
+        elif db_type == "oracle":
+            port = 1521
+        else:
+            port = 3306
     except (TypeError, ValueError):
         return err("端口必须是有效数字", 400)
 
@@ -153,8 +160,8 @@ def update_session(sid: int):
             return err("连接不存在", 404)
         if "db_type" in payload:
             db_type = _normalize_db_type(payload.get("db_type"))
-            if db_type not in ("mysql", "pgsql"):
-                return err("db_type 必须为 mysql 或 pgsql", 400)
+            if db_type not in ("mysql", "pgsql", "oracle"):
+                return err("db_type 必须为 mysql、pgsql 或 oracle", 400)
             row.db_type = db_type
         if "name" in payload:
             name = str(payload.get("name") or "").strip()

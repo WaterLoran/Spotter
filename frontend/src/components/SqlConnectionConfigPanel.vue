@@ -30,7 +30,12 @@
         <el-form-item label="端口"><el-input-number v-model="form.port" :min="1" /></el-form-item>
         <el-form-item label="用户名"><el-input v-model="form.username" /></el-form-item>
         <el-form-item label="密码"><el-input v-model="form.password" type="password" show-password /></el-form-item>
-        <el-form-item label="数据库"><el-input v-model="form.database" /></el-form-item>
+        <el-form-item label="数据库">
+          <el-input v-model="form.database" />
+          <div v-if="lockedDbType === 'oracle'" class="sql-connection-hint">
+            Oracle 请填写 Service Name（DSN: host:port/service_name）
+          </div>
+        </el-form-item>
       </el-form>
       <div class="sql-connection-panel-actions">
         <el-button type="primary" :loading="saving" @click="save">保存连接</el-button>
@@ -56,7 +61,7 @@ import {
 
 const props = defineProps({
   embedded: { type: Boolean, default: false },
-  /** 齿轮菜单打开时锁定：mysql | pgsql */
+  /** 齿轮菜单打开时锁定：mysql | pgsql | oracle */
   dbType: { type: String, default: "mysql" }
 });
 
@@ -67,20 +72,33 @@ const sessions = ref([]);
 const activeTab = ref("");
 const creating = ref(false);
 
-const lockedDbType = computed(() => (props.dbType === "pgsql" ? "pgsql" : "mysql"));
+const lockedDbType = computed(() => {
+  if (props.dbType === "pgsql") return "pgsql";
+  if (props.dbType === "oracle") return "oracle";
+  return "mysql";
+});
 
 function defaultPort() {
-  return lockedDbType.value === "pgsql" ? 5432 : 3306;
+  if (lockedDbType.value === "pgsql") return 5432;
+  if (lockedDbType.value === "oracle") return 1521;
+  return 3306;
 }
 
 function defaultUsername() {
-  return lockedDbType.value === "pgsql" ? "postgres" : "root";
+  if (lockedDbType.value === "pgsql") return "postgres";
+  if (lockedDbType.value === "oracle") return "system";
+  return "root";
 }
 
 function blankForm(overrides = {}) {
   return reactive({
     id: null,
-    name: lockedDbType.value === "pgsql" ? "新 Pgsql 连接" : "新 Mysql 连接",
+    name:
+      lockedDbType.value === "pgsql"
+        ? "新 Pgsql 连接"
+        : lockedDbType.value === "oracle"
+          ? "新 Oracle 连接"
+          : "新 Mysql 连接",
     db_type: lockedDbType.value,
     host: "127.0.0.1",
     port: defaultPort(),
@@ -320,5 +338,11 @@ async function remove() {
 }
 .sql-connection-loading {
   min-height: 160px;
+}
+.sql-connection-hint {
+  margin-top: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.4;
 }
 </style>

@@ -226,6 +226,47 @@ docker stop spotter && docker rm spotter
 
 ---
 
+## Oracle（SqlEye）快速联调
+
+Spotter 的 SQL 查询与字段搜索已支持 Oracle。推荐使用 `oracledb` thin 模式（无需 Oracle Instant Client）。
+
+### 1) 启动 Oracle 测试容器
+
+```bash
+docker run -d \
+  --name oracle-mock-server \
+  -p 15210:1521 \
+  -e ORACLE_PASSWORD=ruoyi123 \
+  gvenzl/oracle-free
+```
+
+### 2) 安装后端依赖并重启后端
+
+```bash
+cd backend
+source .venv/bin/activate   # 若你已创建虚拟环境
+pip install -r requirements.txt
+python app.py
+```
+
+### 3) 在 Spotter 页面中新增 Oracle 连接
+
+- 齿轮菜单 -> `Oracle配置`
+- 推荐填写：
+  - `Host`: `127.0.0.1`
+  - `端口`: `15210`
+  - `用户名`: `system`
+  - `密码`: `ruoyi123`
+  - `数据库`: `FREEPDB1`（此字段在 Oracle 下表示 Service Name）
+
+可用 SQL 示例：
+
+```sql
+SELECT 1 FROM DUAL
+```
+
+---
+
 ## 常见问题与排查
 
 1. **无法连接 Docker**：确认本机 Docker Desktop（或 daemon）已启动后再执行 `docker build` / `docker compose`。
@@ -233,6 +274,7 @@ docker stop spotter && docker rm spotter
 3. **SSH 连接失败**：检查 `DEFAULT_SERVER_*` 或界面中服务器配置、网络与安全组、目标机 `sshd` 与用户权限。
 4. **SQLite 锁或采集卡顿**：生产镜像已采用单 worker Gunicorn；避免多进程同时写同一库文件；可适当调大搜索配置轮询间隔。
 5. **健康检查**：`GET /api/health` 返回 JSON 表示服务正常；Compose 中 healthcheck 亦依赖该接口。
+6. **Oracle 报错“`不支持的数据库类型: 'oracle'`”**：通常是后端进程仍在运行旧代码。请在 `backend/` 目录重新执行 `pip install -r requirements.txt`，然后重启后端进程；并确认页面使用的是最新前端构建。
 
 ---
 

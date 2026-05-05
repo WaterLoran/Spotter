@@ -146,7 +146,7 @@ const sessionOptions = computed(() => {
 
 function sessionOptionLabel(s) {
   const dt = (s.db_type || "").toLowerCase();
-  const t = dt === "pgsql" || dt === "postgres" ? "Pgsql" : dt === "mysql" ? "Mysql" : dt === "sqlite" ? "Sqlite" : dt || "DB";
+  const t = dt === "pgsql" || dt === "postgres" ? "Pgsql" : dt === "mysql" ? "Mysql" : dt === "oracle" ? "Oracle" : dt === "sqlite" ? "Sqlite" : dt || "DB";
   return `${s.name}（${t}）`;
 }
 
