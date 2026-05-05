@@ -1,5 +1,5 @@
-# syntax=docker/dockerfile:1
 # Single image: Vue build → Flask static + API (gunicorn).
+# 不显式指定 # syntax=docker/dockerfile:1，避免 BuildKit 额外拉取前端镜像（部分镜像源失效会直接导致构建失败）。
 
 FROM node:20-alpine AS frontend-build
 WORKDIR /src/frontend
