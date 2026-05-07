@@ -21,6 +21,9 @@ SQLEYE_DB_PATH = Path(os.getenv("SQLEYE_DB_PATH", str(BASE_DIR / SQLEYE_DB_NAME)
 APIEYE_DB_NAME = os.getenv("APIEYE_DB_NAME", "apieye.db")
 APIEYE_DB_PATH = Path(os.getenv("APIEYE_DB_PATH", str(BASE_DIR / APIEYE_DB_NAME)))
 
+REDIS_DB_NAME = os.getenv("REDIS_DB_NAME", "redis_eye.db")
+REDIS_DB_PATH = Path(os.getenv("REDIS_DB_PATH", str(BASE_DIR / REDIS_DB_NAME)))
+
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 APP_LOG_PATH = LOG_DIR / "app.log"
@@ -48,4 +51,3 @@ DEFAULT_CONFIG = {
     # 主配置目录定时增量采集（与多搜索配置各条 enabled 无关）
     "main_log_collection_enabled": os.getenv("DEFAULT_MAIN_LOG_COLLECTION_ENABLED", "1"),
 }
-

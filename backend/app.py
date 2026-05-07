@@ -101,6 +101,33 @@ def create_app():
         "tasks_loaded": bool(api_tasks_bp),
     }
 
+    redis_sessions_bp = None
+    redis_tasks_bp = None
+    redis_events_bp = None
+    try:
+        from redis_eye.routes_events import redis_events_bp as _redis_events_bp
+        from redis_eye.routes_sessions import redis_sessions_bp as _redis_sessions_bp
+        from redis_eye.routes_tasks import redis_tasks_bp as _redis_tasks_bp
+
+        redis_events_bp = _redis_events_bp
+        redis_sessions_bp = _redis_sessions_bp
+        redis_tasks_bp = _redis_tasks_bp
+    except Exception:  # pragma: no cover
+        app.logger.exception("redis_eye 路由未加载（Redis 查询不可用）")
+
+    if redis_sessions_bp:
+        app.register_blueprint(redis_sessions_bp, url_prefix="/api/redis-query")
+    if redis_tasks_bp:
+        app.register_blueprint(redis_tasks_bp, url_prefix="/api/redis-query")
+    if redis_events_bp:
+        app.register_blueprint(redis_events_bp, url_prefix="/api/redis-query")
+
+    app.extensions["spotter_redis_query"] = {
+        "sessions_loaded": bool(redis_sessions_bp),
+        "tasks_loaded": bool(redis_tasks_bp),
+        "events_loaded": bool(redis_events_bp),
+    }
+
     register_routes(app)
     start_background_services(app)
     return app
@@ -155,17 +182,35 @@ def start_background_services(app):
     if ShellQueryService:
         app.extensions["shell_service"] = ShellQueryService()
 
+    app.extensions["redis_watch_service"] = None
+    try:
+        from redis_eye.services.redis_watch_service import RedisWatchService
+
+        rw = RedisWatchService(app)
+        rw.start()
+        app.extensions["redis_watch_service"] = rw
+        app.logger.info("start_background_services: redis_watch_service started")
+    except Exception:  # pragma: no cover
+        app.logger.exception("start_background_services: redis_watch_service 未启动（可检查是否已安装 redis 包）")
+
 
 def register_routes(app):
     @app.get("/api/health")
     def health():
         apieye = app.extensions.get("spotter_apieye") or {}
+        redis_q = app.extensions.get("spotter_redis_query") or {}
         return ok(
             {
                 "status": "ok",
                 "api_query": {
                     "headers": bool(apieye.get("headers_loaded")),
                     "tasks": bool(apieye.get("tasks_loaded")),
+                },
+                "redis_query": {
+                    "sessions": bool(redis_q.get("sessions_loaded")),
+                    "tasks": bool(redis_q.get("tasks_loaded")),
+                    "events": bool(redis_q.get("events_loaded")),
+                    "watch": bool(app.extensions.get("redis_watch_service")),
                 },
             }
         )

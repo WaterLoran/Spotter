@@ -39,6 +39,7 @@
               <el-dropdown-item divided @click="openSqlSessionConfigDialog('mysql')">Mysql配置</el-dropdown-item>
               <el-dropdown-item @click="openSqlSessionConfigDialog('pgsql')">Pgsql配置</el-dropdown-item>
               <el-dropdown-item @click="openSqlSessionConfigDialog('oracle')">Oracle配置</el-dropdown-item>
+              <el-dropdown-item divided @click="openRedisConfigDialog">Redis 配置</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -67,7 +68,7 @@
       destroy-on-close
       @closed="destroyTabSortable"
     >
-      <p class="tab-visibility-hint">拖动左侧手柄排序；勾选控制在主界面是否显示（仅下列五项）。</p>
+      <p class="tab-visibility-hint">拖动左侧手柄排序；勾选控制在主界面是否显示（仅下列六项）。</p>
       <div ref="sortableContainerRef" class="tab-visibility-sort-list">
         <div v-for="row in draftOrderRows" :key="row.key" class="tab-visibility-row">
           <span class="tab-visibility-drag-handle" title="拖动排序">
@@ -93,6 +94,10 @@
     >
       <SqlConnectionConfigPanel v-if="sqlSessionConfigDialogVisible" embedded :db-type="sqlSessionConfigInitialDb" />
     </el-dialog>
+
+    <el-dialog v-model="redisConfigDialogVisible" title="Redis 连接配置" width="640px" destroy-on-close align-center>
+      <RedisConnectionConfigPanel v-if="redisConfigDialogVisible" embedded />
+    </el-dialog>
   </div>
 </template>
 
@@ -108,21 +113,24 @@ import LogViewPane from "./components/LogViewPane.vue";
 import ShellQueryPanel from "./components/ShellQueryPanel.vue";
 import SqlConnectionConfigPanel from "./components/SqlConnectionConfigPanel.vue";
 import ApiQueryPanel from "./components/ApiQueryPanel.vue";
+import RedisConnectionConfigPanel from "./components/RedisConnectionConfigPanel.vue";
+import RedisQueryPanel from "./components/RedisQueryPanel.vue";
 import SqlFieldSearchPanel from "./components/SqlFieldSearchPanel.vue";
 import SqlQueryPanel from "./components/SqlQueryPanel.vue";
 
 const TAB_STORAGE_KEY = "spotter_tab_bar_prefs_v1";
 
-/** 仅这五项可在弹窗中配置显示与顺序；其余标签顺序固定见 DEFAULT_FULL_TAB_ORDER */
-const CONFIGURABLE_TAB_KEYS = ["logs", "sql-query", "shell-query", "api-query", "field-search"];
-/** 与 {@link DEFAULT_FULL_TAB_ORDER} 中前五项可配置标签对应下标；最后一项为固定的「后台任务」 */
-const CONFIGURABLE_TAB_SLOTS = [0, 1, 2, 3, 4];
+/** 仅这六项可在弹窗中配置显示与顺序；其余标签顺序固定见 DEFAULT_FULL_TAB_ORDER */
+const CONFIGURABLE_TAB_KEYS = ["logs", "sql-query", "shell-query", "api-query", "redis-query", "field-search"];
+/** 与 {@link DEFAULT_FULL_TAB_ORDER} 中前六项可配置标签对应下标；最后一项为固定的「后台任务」 */
+const CONFIGURABLE_TAB_SLOTS = [0, 1, 2, 3, 4, 5];
 
 const CONFIGURABLE_LABELS = {
   logs: "日志列表",
   "sql-query": "SQL查询",
   "shell-query": "Shell查询",
   "api-query": "API查询",
+  "redis-query": "Redis 查询",
   "field-search": "字段搜索",
 };
 
@@ -131,6 +139,7 @@ const TAB_LABELS = {
   "sql-query": "SQL查询",
   "shell-query": "Shell查询",
   "api-query": "API查询",
+  "redis-query": "Redis 查询",
   "field-search": "字段搜索",
   tasks: "后台任务",
 };
@@ -140,13 +149,29 @@ const TAB_COMPONENTS = {
   "sql-query": SqlQueryPanel,
   "shell-query": ShellQueryPanel,
   "api-query": ApiQueryPanel,
+  "redis-query": RedisQueryPanel,
   "field-search": SqlFieldSearchPanel,
   tasks: BackgroundTasksPanel,
 };
 
-const DEFAULT_FULL_TAB_ORDER = ["logs", "sql-query", "shell-query", "api-query", "field-search", "tasks"];
+const DEFAULT_FULL_TAB_ORDER = [
+  "logs",
+  "sql-query",
+  "shell-query",
+  "api-query",
+  "redis-query",
+  "field-search",
+  "tasks",
+];
 
-const DEFAULT_ORDER_CONFIGURABLE = ["logs", "sql-query", "shell-query", "api-query", "field-search"];
+const DEFAULT_ORDER_CONFIGURABLE = [
+  "logs",
+  "sql-query",
+  "shell-query",
+  "api-query",
+  "redis-query",
+  "field-search",
+];
 
 function loadTabBarPrefs() {
   try {
@@ -171,6 +196,7 @@ function normalizeVisible(raw) {
     "sql-query": true,
     "shell-query": true,
     "api-query": true,
+    "redis-query": true,
     "field-search": true,
   };
   if (raw && typeof raw === "object") {
@@ -227,6 +253,7 @@ const sqlSessionConfigDialogTitle = computed(() =>
       ? "Oracle 连接配置"
       : "Mysql 连接配置"
 );
+const redisConfigDialogVisible = ref(false);
 const sortableContainerRef = ref(null);
 const draftOrderRows = ref([]);
 let sortableInstance = null;
@@ -334,6 +361,10 @@ function openLogConfigTab() {
 function openSqlSessionConfigDialog(kind = "mysql") {
   sqlSessionConfigInitialDb.value = kind === "pgsql" ? "pgsql" : kind === "oracle" ? "oracle" : "mysql";
   sqlSessionConfigDialogVisible.value = true;
+}
+
+function openRedisConfigDialog() {
+  redisConfigDialogVisible.value = true;
 }
 
 async function deleteSystemAction() {

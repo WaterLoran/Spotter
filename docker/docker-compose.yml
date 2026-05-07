@@ -13,6 +13,7 @@ services:
       - DATA_DIR=/app/data
       - MAIN_DB_NAME=logs.db
       - SQLEYE_DB_NAME=sqleye.db
+      - REDIS_DB_PATH=/app/data/redis_eye.db
       - SCHEDULER_ENABLED=true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health').read()"]
